@@ -8,7 +8,7 @@ A Python-based command-line application that allows customers to place orders fr
 - **Categorized Menu**: Organizes menu items into Appetizers, Main Course, Drinks, and Desserts for easier navigation.
 - **Real-Time Inventory Management**: Tracks the availability of each item, updating inventory quantities as orders are placed.
 - **Order Modification**: Customers can add, remove, or change the quantities of items before finalizing their orders.
-- **Discounts and Promotions**: A 10% discount is applied to orders exceeding $50.
+- **Discounts and Promotions**: A 10% discount is applied to orders exceeding UGX 50,000.
 - **Multiple Payment Methods**: Supports cash, credit/debit cards, and mobile payments.
 - **Order History and Receipts**: Saves order history to a file for future reference.
 - **Order Queue and Pickup Time Estimation**: Estimates the time for order pickup or delivery based on current queue size.
@@ -92,11 +92,3 @@ You can easily modify the system by adding more features or adjusting existing o
 - **Graphical User Interface (GUI)**: Implement a GUI using `Tkinter` or `PyQt` for a more interactive ordering experience.
 - **Advanced Order Tracking**: Add real-time order tracking to show order status in the kitchen.
 - **Mobile App Integration**: Integrate mobile payment APIs for real-time mobile payments.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-Feel free to adapt the **README** to better reflect any specific changes or additions you make to the project!

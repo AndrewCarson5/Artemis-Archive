@@ -1,14 +1,14 @@
 import time
 
-# Menu categorized into different sections
+# Menu 
 menu = {
-    'Appetizers': {'Salad': 6.25, 'Soup': 4.50},
-    'Main Course': {'Sandwich': 5.00, 'Burger': 8.50, 'Pizza Slice': 3.75},
-    'Drinks': {'Soda': 1.50, 'Coffee': 2.00, 'Water': 1.00},
-    'Desserts': {'Ice Cream': 3.00, 'Cake': 4.00}
+    'Appetizers': {'Salad': 2000, 'Soup': 4500},
+    'Main Course': {'Sandwich': 5000, 'Burger': 8500, 'Pizza Slice': 7500},
+    'Drinks': {'Soda': 1500, 'Coffee': 2000, 'Water': 1000},
+    'Desserts': {'Ice Cream': 3000, 'Cake': 4000}
 }
 
-# Inventory system to track availability
+# Inventory 
 inventory = {
     'Salad': 10,
     'Soup': 10,
@@ -31,7 +31,7 @@ def display_menu():
     for category, items in menu.items():
         print(f"\n{category}:")
         for item, price in items.items():
-            print(f"  {item}: ${price:.2f} ({inventory[item]} available)")
+            print(f"  {item}: UGX {price:.2f} ({inventory[item]} available)")
     print("\n--------------------------\n")
 
 # Function to update inventory when items are ordered
@@ -106,12 +106,12 @@ def calculate_total(order):
     for item, quantity in order.items():
         price = menu[next(cat for cat, items in menu.items() if item in items)][item] * quantity
         total += price
-        print(f"{item} x{quantity}: ${price:.2f}")
+        print(f"{item} x{quantity}: UGX{price:.2f}")
     
-    if total > 50:  # Apply discount for orders over $50
+    if total > 50000:  # Apply discount for orders over UGX50,000
         print("You qualify for a 10% discount!")
         total *= 0.90
-    print(f"Total: ${total:.2f}")
+    print(f"Total: UGX{total:.2f}")
     print("-------------------------\n")
     return total
 
@@ -119,13 +119,13 @@ def calculate_total(order):
 def make_payment(total):
     while True:
         payment_method = input("Choose a payment method (1) Cash, (2) Card, (3) Mobile Payment: ")
-        payment = float(input(f"Your total is ${total:.2f}. Please enter the payment amount: $"))
+        payment = float(input(f"Your total is UGX{total:.2f}. Please enter the payment amount: UGX"))
         if payment >= total:
             change = payment - total
-            print(f"Payment successful! Your change is ${change:.2f}. Thank you for your order!")
+            print(f"Payment successful! Your change is UGX{change:.2f}. Thank you for your order!")
             break
         else:
-            print(f"Insufficient amount. You still owe ${total - payment:.2f}.")
+            print(f"Insufficient amount. You still owe UGX{total - payment:.2f}.")
 
 # Function to estimate pickup or delivery time
 def estimate_pickup_time(order_count):
@@ -142,12 +142,12 @@ def choose_delivery_option():
 # Function to save order history
 def save_order_history(order, total, delivery_option):
     with open('order_history.txt', 'a') as file:
-        file.write(f"Order: {order}, Total: ${total:.2f}, Option: {delivery_option}\n")
+        file.write(f"Order: {order}, Total: UGX{total:.2f}, Option: {delivery_option}\n")
 
 # Function to handle the cafeteria ordering system
 def cafeteria_ordering_system():
     global order_count
-    print("Welcome to the Cafeteria Ordering System!")
+    print("Welcome to the Carson Cafeteria Ordering System!")
     
     while True:
         order = take_order()  # Take customer's order
@@ -163,7 +163,7 @@ def cafeteria_ordering_system():
         
         another_order = input("Would you like to place another order? (yes/no): ").lower()
         if another_order != 'yes':
-            print("Thank you for visiting the cafeteria!")
+            print("Thank you for visiting the Carson Cafeteria!")
             break
         order_count += 1
 

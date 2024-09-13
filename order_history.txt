@@ -1,0 +1,1 @@
+Order: {'Water': 3, 'Cake': 1}, Total: $7.00, Option: Delivery to Lungujja
