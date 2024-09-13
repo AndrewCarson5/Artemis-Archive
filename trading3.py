@@ -15,7 +15,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 
-
 class OptimizedForexTradingBot:
     def __init__(self, symbol: str, timeframe: str):
         self.symbol = symbol
@@ -28,10 +27,10 @@ class OptimizedForexTradingBot:
         self.model = None
 
         if not mt5.initialize():
-            print("initialize() failed")
+            self.logger.error("initialize() failed")
             mt5.shutdown()
+            raise RuntimeError("MetaTrader5 initialization failed")
 
-        # Dynamic strategy parameters
         self.short_window = 50
         self.long_window = 100
         self.rsi_period = 14
@@ -39,8 +38,8 @@ class OptimizedForexTradingBot:
         self.rsi_oversold = 30
         self.atr_period = 14
         self.risk_per_trade = 0.01
-        self.accuracy_threshold = 0.75  # Accuracy threshold for retraining
-        self.cache = {}  # Cache for optimization results
+        self.accuracy_threshold = 0.75
+        self.cache = {}
 
     def setup_logger(self):
         logger = logging.getLogger("TradingBot")
@@ -132,7 +131,6 @@ class OptimizedForexTradingBot:
         for rsi_period in range(10, 30):
             for rsi_overbought in range(65, 85, 5):
                 for rsi_oversold in range(15, 35, 5):
-                    # Check if results are cached
                     cache_key = (rsi_period, rsi_overbought, rsi_oversold)
                     if cache_key in self.cache:
                         sharpe = self.cache[cache_key]
@@ -154,7 +152,7 @@ class OptimizedForexTradingBot:
                             * self.df["strategy_returns"].mean()
                             / self.df["strategy_returns"].std()
                         )
-                        self.cache[cache_key] = sharpe  # Cache the result
+                        self.cache[cache_key] = sharpe
 
                     if sharpe > best_sharpe:
                         best_sharpe = sharpe
@@ -204,7 +202,7 @@ class OptimizedForexTradingBot:
 
         if accuracy < self.accuracy_threshold:
             self.logger.info("Retraining ML model due to accuracy drop.")
-            self.train_ml_model()  # Controlled retraining
+            self.train_ml_model()
 
     def get_ml_signal(self) -> int:
         if self.model is None:
@@ -231,22 +229,15 @@ class OptimizedForexTradingBot:
 
     def calculate_dynamic_confidence(self, last_row) -> float:
         volatility = last_row["volatility"]
-        confidence = 0.0
-
-        # Define clear criteria for changing confidence
-        if volatility > 0.02:  # High volatility
-            confidence = 0.5
-        else:  # Low volatility
-            confidence = 1.0
-
-        return confidence
+        if volatility > 0.02:
+            return 0.5
+        return 1.0
 
     def get_signal(self) -> Tuple[str, float]:
         last_row = self.df.iloc[-1]
         signal = "HOLD"
         confidence = 0.0
 
-        # Moving Average Crossover
         if last_row["short_ma"] > last_row["long_ma"]:
             signal = "BUY"
             confidence += 0.2
@@ -254,7 +245,6 @@ class OptimizedForexTradingBot:
             signal = "SELL"
             confidence += 0.2
 
-        # RSI
         if last_row["rsi"] < self.rsi_oversold:
             signal = "BUY"
             confidence += 0.2
@@ -262,7 +252,6 @@ class OptimizedForexTradingBot:
             signal = "SELL"
             confidence += 0.2
 
-        # Bollinger Bands
         if last_row["close"] < last_row["lower_bb"]:
             signal = "BUY"
             confidence += 0.1
@@ -270,233 +259,139 @@ class OptimizedForexTradingBot:
             signal = "SELL"
             confidence += 0.1
 
-        # MACD
-        if last_row["macd"] > last_row["macd_signal"]:
-            if signal == "BUY":
-                confidence += 0.1
-            else:
-                signal = "BUY"
-                confidence = 0.1
-        elif last_row["macd"] < last_row["macd_signal"]:
-            if signal == "SELL":
-                confidence += 0.1
-            else:
-                signal = "SELL"
-                confidence = 0.1
-
-        # ADX (trend strength)
-        if last_row["adx"] > 25:
-            confidence += 0.1
-
-        # ML model signal
         ml_signal = self.get_ml_signal()
-        if (ml_signal == 1 and signal == "BUY") or (
-            ml_signal == -1 and signal == "SELL"
-        ):
-            confidence += 0.2
-        else:
-            confidence -= 0.1
+        if ml_signal == 1:
+            signal = "BUY"
+            confidence += 0.3
+        elif ml_signal == -1:
+            signal = "SELL"
+            confidence += 0.3
 
-        return signal, min(confidence, 1.0)
+        confidence = min(confidence, 1.0)
+        dynamic_confidence = self.calculate_dynamic_confidence(last_row)
+        confidence = max(confidence, dynamic_confidence)
 
-    def calculate_position_size(self, side: str) -> float:
-        account_balance = self.balance
-        risk_amount = account_balance * self.risk_per_trade
-        last_atr = self.df["atr"].iloc[-1]
-        point = mt5.symbol_info(self.symbol).point
-        contract_size = mt5.symbol_info(self.symbol).trade_contract_size
-
-        if side == "buy":
-            entry_price = mt5.symbol_info_tick(self.symbol).ask
-            stop_loss = entry_price - (2 * last_atr)
-        else:
-            entry_price = mt5.symbol_info_tick(self.symbol).bid
-            stop_loss = entry_price + (2 * last_atr)
-
-        position_size = risk_amount / (
-            abs(entry_price - stop_loss) / point * contract_size
+        self.logger.info(
+            f"Generated signal: {signal} with confidence: {confidence:.2f}"
         )
-        return position_size
+        return signal, confidence
 
-    def execute_trade(self, side: str, amount: float):
+    def execute_trade(self, signal: str, confidence: float):
         try:
-            symbol_info = mt5.symbol_info(self.symbol)
-            if symbol_info is None:
-                self.logger.error(f"{self.symbol} not found")
-                return
-            if not symbol_info.visible:
-                if not mt5.symbol_select(self.symbol, True):
-                    self.logger.error(f"symbol_select({self.symbol}) failed")
+            if not self.in_position:
+                if signal == "BUY":
+                    volume = self.calculate_volume()
+                    order = mt5.ORDER_BUY
+                elif signal == "SELL":
+                    volume = self.calculate_volume()
+                    order = mt5.ORDER_SELL
+                else:
+                    self.logger.info("No trading action required.")
                     return
 
-            lot = amount
-            point = mt5.symbol_info(self.symbol).point
-            price = (
-                mt5.symbol_info_tick(self.symbol).ask
-                if side == "buy"
-                else mt5.symbol_info_tick(self.symbol).bid
-            )
-            deviation = 20
-            request = {
-                "action": mt5.TRADE_ACTION_DEAL,
-                "symbol": self.symbol,
-                "volume": lot,
-                "type": mt5.ORDER_TYPE_BUY if side == "buy" else mt5.ORDER_TYPE_SELL,
-                "price": price,
-                "sl": price - 100 * point if side == "buy" else price + 100 * point,
-                "tp": price + 100 * point if side == "buy" else price - 100 * point,
-                "deviation": deviation,
-                "magic": 234000,
-                "comment": "python script open",
-                "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
-            }
-            result = mt5.order_send(request)
+                request = {
+                    "action": mt5.TRADE_ACTION_DEAL,
+                    "symbol": self.symbol,
+                    "volume": volume,
+                    "type": order,
+                    "price": mt5.symbol_info_tick(self.symbol).last,
+                    "sl": 0,
+                    "tp": 0,
+                    "deviation": 10,
+                    "magic": 123456,
+                    "comment": "Trading bot execution",
+                }
 
-            # Check for order status
-            if result.retcode != mt5.TRADE_RETCODE_DONE:
-                self.logger.error(f"Order failed: {result.retcode}")
+                result = mt5.order_send(request)
+                if result.retcode != mt5.TRADE_RETCODE_DONE:
+                    self.logger.error(f"Failed to execute trade: {result.retcode}")
+                else:
+                    self.in_position = True
+                    self.logger.info(f"Trade executed: {signal} at volume {volume}")
             else:
-                self.logger.info(f"Executed {side} order: {result}")
+                self.logger.info("Already in position, no new trades executed.")
         except Exception as e:
-            self.logger.error(f"Error executing {side} order: {e}")
+            self.logger.error(f"Error executing trade: {e}")
 
-    def backtest(self, start_date: str, end_date: str) -> pd.DataFrame:
-        backtest_df = self.df.loc[start_date:end_date].copy()
-        backtest_df["signal"], backtest_df["confidence"] = zip(
-            *backtest_df.apply(lambda row: self.get_signal(), axis=1)
-        )
-        backtest_df["position"] = 0
-        backtest_df.loc[backtest_df["signal"] == "BUY", "position"] = 1
-        backtest_df.loc[backtest_df["signal"] == "SELL", "position"] = -1
-        backtest_df["returns"] = backtest_df["close"].pct_change()
-        backtest_df["strategy_returns"] = (
-            backtest_df["position"].shift() * backtest_df["returns"]
-        )
-        backtest_df["cumulative_returns"] = (
-            1 + backtest_df["strategy_returns"]
-        ).cumprod()
-
-        # Calculate success rate
-        backtest_df["correct_prediction"] = (
-            backtest_df["position"].shift() * backtest_df["returns"]
-        ) > 0
-        success_rate = backtest_df["correct_prediction"].mean()
-        self.logger.info(f"Backtest success rate: {success_rate:.2%}")
-
-        # Use backtesting results to refine parameters or trading logic
-        # Additional logic can be added here for optimization based on success rate
-
-        return backtest_df
-
-    def adjust_parameters(self):
-        recent_volatility = (
-            self.df["close"].pct_change().rolling(window=30).std().iloc[-1]
-        )
-        if recent_volatility > 0.02:  # High volatility
-            self.short_window = max(10, self.short_window - 5)
-            self.long_window = max(20, self.long_window - 10)
-        else:  # Low volatility
-            self.short_window = min(100, self.short_window + 5)
-            self.long_window = min(200, self.long_window + 10)
-
-        self.validate_parameters()  # Validate parameter adjustments
-        self.logger.info(
-            f"Adjusted parameters: short_window={self.short_window}, long_window={self.long_window}"
-        )
-
-    def perform_trade_cycle(self):
-        self.fetch_ohlcv()
-        self.calculate_indicators()
-        self.update_balance()
-        self.adjust_parameters()
-        self.optimize_parameters()  # Periodically optimize parameters
-        self.train_ml_model()  # Periodically retrain ML model
-        self.process_signals()
-
-    def process_signals(self):
-        signal, confidence = self.get_signal()
-        self.logger.info(f"Signal: {signal}, Confidence: {confidence}")
-        if signal == "BUY" and not self.in_position and confidence > 0.7:
-            amount = self.calculate_position_size("buy")
-            self.execute_trade("buy", amount)
-            self.in_position = True
-        elif signal == "SELL" and self.in_position and confidence > 0.7:
-            amount = self.calculate_position_size("sell")
-            self.execute_trade("sell", amount)
-            self.in_position = False
+    def calculate_volume(self) -> float:
+        if self.balance is None:
+            self.update_balance()
+        return self.balance * self.risk_per_trade / 100
 
     def run(self):
         self.running = True
+        self.logger.info("Starting trading bot")
         while self.running:
-            try:
-                self.perform_trade_cycle()
-                time.sleep(60)  # Check every minute
-            except Exception as e:
-                self.logger.error(f"Error in main loop: {e}")
-                time.sleep(60)  # Wait a minute before retrying
+            self.fetch_ohlcv()
+            self.calculate_indicators()
+            self.optimize_parameters()
+            self.train_ml_model()
+            signal, confidence = self.get_signal()
+            self.execute_trade(signal, confidence)
+            time.sleep(60)  # Run every minute
 
     def stop(self):
         self.running = False
         mt5.shutdown()
+        self.logger.info("Trading bot stopped")
+
+    def plot_gui(self):
+        root = tk.Tk()
+        root.title("Trading Bot")
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        self.df[["close", "short_ma", "long_ma"]].plot(ax=ax)
+        ax.set_title(f"{self.symbol} - {self.timeframe} Chart")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Price")
+
+        canvas = FigureCanvasTkAgg(fig, master=root)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        root.mainloop()
+
+    def start_gui_thread(self):
+        gui_thread = threading.Thread(target=self.plot_gui)
+        gui_thread.start()
 
 
-class TradingBotGUI:
-    def __init__(self, bot: OptimizedForexTradingBot):
-        self.bot = bot
-        self.root = tk.Tk()
-        self.root.title("Forex Trading Bot")
-        self.setup_ui()
-
-    def setup_ui(self):
-        self.fig, self.ax = plt.subplots(figsize=(10, 6))
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-
-        self.control_frame = ttk.Frame(self.root)
-        self.control_frame.pack(side=tk.BOTTOM, fill=tk.X)
-        self.start_button = ttk.Button(
-            self.control_frame, text="Start", command=self.start_bot
-        )
-        self.start_button.pack(side=tk.LEFT)
-        self.stop_button = ttk.Button(
-            self.control_frame, text="Stop", command=self.stop_bot
-        )
-        self.stop_button.pack(side=tk.LEFT)
-        self.update_button = ttk.Button(
-            self.control_frame, text="Update Chart", command=self.update_chart
-        )
-        self.update_button.pack(side=tk.LEFT)
-
-    def start_bot(self):
-        self.bot_thread = threading.Thread(target=self.bot.run)
-        self.bot_thread.start()
-
-    def stop_bot(self):
-        self.bot.stop()
-        if self.bot_thread.is_alive():
-            self.bot_thread.join()
-        self.bot.logger.info("Bot stopped successfully")
-
-    def update_chart(self):
-        self.ax.clear()
-        self.bot.df["close"].plot(ax=self.ax, label="Close Price")
-        self.bot.df["short_ma"].plot(ax=self.ax, label="50-period MA")
-        self.bot.df["long_ma"].plot(ax=self.ax, label="100-period MA")
-        self.bot.df["upper_bb"].plot(ax=self.ax, label="Upper BB")
-        self.bot.df["lower_bb"].plot(ax=self.ax, label="Lower BB")
-        self.ax.legend()
-        self.ax.set_title("Price and Technical Indicators")
-        self.ax.set_xlabel("Date")
-        self.ax.set_ylabel("Price")
-        self.canvas.draw()
+class MultiCurrencyForexTradingBot:
+    def __init__(self, symbols: List[str], timeframe: str):
+        self.symbols = symbols
+        self.timeframe = timeframe
+        self.bots = [OptimizedForexTradingBot(symbol, timeframe) for symbol in symbols]
 
     def run(self):
-        self.root.mainloop()
+        self.running = True
+        threads = []
+        for bot in self.bots:
+            thread = threading.Thread(target=bot.run)
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+    def stop(self):
+        self.running = False
+        for bot in self.bots:
+            bot.stop()
 
 
-# Usage example:
-# bot = OptimizedForexTradingBot('EURUSD', 'M15')
-# gui = TradingBotGUI(bot)
-# gui.run()
+if __name__ == "__main__":
+    symbols = ["EURUSD", "GBPUSD", "USDJPY"]  # Add more currency pairs as needed
+    multi_bot = MultiCurrencyForexTradingBot(symbols, "M15")
+    try:
+        multi_bot.run()
+    except KeyboardInterrupt:
+        multi_bot.stop()
+
+""" if __name__ == "__main__":
+    bot = OptimizedForexTradingBot("EURUSD", "M15")
+    try:
+        bot.start_gui_thread()
+        bot.run()
+    except KeyboardInterrupt:
+        bot.stop()
+ """
