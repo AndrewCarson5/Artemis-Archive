@@ -16,7 +16,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 
-class OptimizedForexTradingBot:
+class ForexTradingBot2:
     def __init__(self, symbol: str, timeframe: str):
         self.symbol = symbol
         self.timeframe = timeframe

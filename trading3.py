@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 
-class OptimizedForexTradingBot:
+class ForexTradingBot3:
     def __init__(self, symbol: str, timeframe: str):
         self.symbol = symbol
         self.timeframe = timeframe
@@ -360,7 +360,7 @@ class MultiCurrencyForexTradingBot:
     def __init__(self, symbols: List[str], timeframe: str):
         self.symbols = symbols
         self.timeframe = timeframe
-        self.bots = [OptimizedForexTradingBot(symbol, timeframe) for symbol in symbols]
+        self.bots = [ForexTradingBot3(symbol, timeframe) for symbol in symbols]
 
     def run(self):
         self.running = True
@@ -388,7 +388,7 @@ if __name__ == "__main__":
         multi_bot.stop()
 
 """ if __name__ == "__main__":
-    bot = OptimizedForexTradingBot("EURUSD", "M15")
+    bot = ForexTradingBot("EURUSD", "M15")
     try:
         bot.start_gui_thread()
         bot.run()
